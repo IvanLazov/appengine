@@ -13,21 +13,87 @@
 <%@ page import="com.google.appengine.api.datastore.FetchOptions" %>
 <%@ page import="com.google.appengine.api.datastore.Key" %>
 <%@ page import="com.google.appengine.api.datastore.KeyFactory" %>
+<%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
 
 <html>
 <head>
     <title>Guestbook</title>
+    <link type="text/css" rel="stylesheet" href="/stylesheets/main" />
 </head>
 <body>
 
     <%
         String guestbookName = request.getParameter("guestbookName");
+
         if (guestbookName == null) {
             guestbookName = "default";
         }
 
+        pageContext.setAttribute("guestbookName", guestbookName);
+        UserService userService = UserServiceFactory.getUserService();
+        User user = userService.getCurrentUser();
 
+        if (user != null) {
+            pageContext.setAttribute("user", user);
     %>
+    <p>
+        Hello! <%=user.getNickname()%>!<br/>
+        <a href="<%= userService.createLogoutURL(request.getRequestURI())%>">Sign out</a>
+    </p>
+
+    <%
+        } else {
+    %>
+
+    <p>Hello! You can <a href="<%=userService.createLoginURL(request.getRequestURI())%>">sing in</a></p>
+    <%
+        }
+    %>
+
+    <%
+        DatastoreService datastoreService = DatastoreServiceFactory.getDatastoreService();
+        Key guestbookKey = KeyFactory.createKey("Guestbook", guestbookName);
+
+        Query query = new Query("Greeting", guestbookKey).addSort("date", Query.SortDirection.DESCENDING);
+        List<Entity> greetings = datastoreService.prepare(query).asList(FetchOptions.Builder.withLimit(5));
+
+        if (greetings.isEmpty()) {
+            %>
+            <p>Guestbook - '${fn:escapeXml(guestbookName)}' has no messages</p>
+            <%
+        } else {
+            %>
+            <p>Messages in Guestbook - ${fn:escapeXml(guestbookName)}.</p>
+            <%
+            for (Entity greeting: greetings) {
+                pageContext.setAttribute("greeting_content", greeting.getProperty("content"));
+
+                if (greeting.getProperty("user") == null) {
+                    %>
+                    <p>An anonymous person wrote: </p>
+                    <%
+                } else {
+                    pageContext.setAttribute("greeting_user", greeting.getProperty("user"));
+                    %>
+                    <p><b>${fn:escapeXml(greeting_user.nickname)}</b> wrote:</p>
+                    <%
+                }
+                %>
+                <blockquote>${fn:escapeXml(greeting_content)}</blockquote>
+                <%
+            }
+        }
+    %>
+
+    <form action="/sign" method="post">
+        <div>
+            <textarea rows="3" cols="60" name="content"></textarea>
+        </div>
+        <div>
+            <input type="submit" value="Post Greeting" />
+        </div>
+        <input type="hidden" name="guestbookName" value="${fn:escapeXml(guestbookName)}" />
+    </form>
 
 </body>
 </html>
